@@ -1,6 +1,6 @@
 module Pod
   class Builder
-    def initialize(source_dir, static_sandbox_root, dynamic_sandbox_root, public_headers_root, spec, embedded, mangle, dynamic, config, bundle_identifier, exclude_deps)
+    def initialize(source_dir, static_sandbox_root, dynamic_sandbox_root, public_headers_root, spec, embedded, mangle, dynamic, config, bundle_identifier, exclude_deps, skip_i)
       @source_dir = source_dir
       @static_sandbox_root = static_sandbox_root
       @dynamic_sandbox_root = dynamic_sandbox_root
@@ -12,6 +12,7 @@ module Pod
       @config = config
       @bundle_identifier = bundle_identifier
       @exclude_deps = exclude_deps
+      @skip_i = skip_i
     end
 
     def build(platform, library)
@@ -99,9 +100,12 @@ module Pod
       xcodebuild(device_defines, device_options, 'build', @spec.name.to_s, @dynamic_sandbox_root.to_s)
 
       sim_defines = "#{defines} LIBRARY_SEARCH_PATHS=\"#{Dir.pwd}/#{@static_sandbox_root}/build-sim\" ONLY_ACTIVE_ARCH=NO"
-      #xcodebuild(sim_defines, '-sdk iphonesimulator', 'build-sim', @spec.name.to_s, @dynamic_sandbox_root.to_s)
-      xcodebuild(sim_defines, '-sdk iphonesimulator ARCHS=x86_64', 'build-sim', @spec.name.to_s, @dynamic_sandbox_root.to_s)
-
+      #origin: xcodebuild(sim_defines, '-sdk iphonesimulator', 'build-sim', @spec.name.to_s, @dynamic_sandbox_root.to_s)
+      if @skip_i 
+        xcodebuild(sim_defines, '-sdk iphonesimulator ARCHS=x86_64', 'build-sim', @spec.name.to_s, @dynamic_sandbox_root.to_s)
+      else
+        xcodebuild(sim_defines, '-sdk iphonesimulator', 'build-sim', @spec.name.to_s, @dynamic_sandbox_root.to_s)
+      end
       # Combine architectures
       `lipo #{@dynamic_sandbox_root}/build/#{@spec.name}.framework/#{@spec.name} #{@dynamic_sandbox_root}/build-sim/#{@spec.name}.framework/#{@spec.name} -create -output #{output}`
 
@@ -126,8 +130,12 @@ module Pod
 
     def build_sim_libraries(platform, defines)
       if platform.name == :ios
-        #xcodebuild(defines, '-sdk iphonesimulator', 'build-sim')
-        xcodebuild(defines, '-sdk iphonesimulator ARCHS=x86_64', 'build-sim')
+        #origin: xcodebuild(defines, '-sdk iphonesimulator', 'build-sim')
+        if @skip_i 
+          xcodebuild(defines, '-sdk iphonesimulator ARCHS=x86_64', 'build-sim')
+        else
+          xcodebuild(defines, '-sdk iphonesimulator', 'build-sim')
+        end
       end
     end
 
@@ -274,8 +282,12 @@ MAP
     end
 
     def ios_build_options
-      "ARCHS=\'x86_64 arm64 armv7 armv7s\' OTHER_CFLAGS=\'-fembed-bitcode -Qunused-arguments\'"
-      #{}"ARCHS=\'x86_64 i386 arm64 armv7 armv7s\' OTHER_CFLAGS=\'-fembed-bitcode -Qunused-arguments\'"
+      #origin: "ARCHS=\'x86_64 i386 arm64 armv7 armv7s\' OTHER_CFLAGS=\'-fembed-bitcode -Qunused-arguments\'"
+      if @skip_i
+        "ARCHS=\'x86_64 arm64 armv7 armv7s\' OTHER_CFLAGS=\'-fembed-bitcode -Qunused-arguments\'"
+      else
+        "ARCHS=\'x86_64 i386 arm64 armv7 armv7s\' OTHER_CFLAGS=\'-fembed-bitcode -Qunused-arguments\'"
+      end
     end
 
     def xcodebuild(defines = '', args = '', build_dir = 'build', target = 'Pods-packager', project_root = @static_sandbox_root, config = @config)
